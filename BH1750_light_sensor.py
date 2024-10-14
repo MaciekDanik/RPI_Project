@@ -29,7 +29,7 @@ class BH1750(object):
         except:
             print('ERROR: General unknown error')
 
-obj = BH1750()
-for i in range (1, 20):
-    obj.print_result()
-    time.sleep(1)
+# obj = BH1750()
+# for i in range (1, 20):
+#     obj.print_result()
+#     time.sleep(1)
