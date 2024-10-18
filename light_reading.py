@@ -6,8 +6,8 @@ GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BOARD)
 
 #konfiguracja pinów do obsługi diód led
-GPIO.setup(40,GPIO.OUT)
-GPIO.setup(36,GPIO.OUT)
+GPIO.setup(40,GPIO.OUT) #jedna dioda
+GPIO.setup(36,GPIO.OUT) #dwie diody
 
 sensor = BH1750()
 
