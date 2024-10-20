@@ -2,9 +2,6 @@ import time
 import smbus
 import RPi.GPIO as GPIO
 
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BOARD)
-
 BH1750_ADDR = 0x23 #sensor adress on the i2c bus
 CMD_READ = 0x11 #comand to read light sensitivity
 
@@ -28,8 +25,3 @@ class BH1750(object):
             print('ERROR: I2C device not found. Please check BH1750 wiring.')
         except:
             print('ERROR: General unknown error')
-
-# obj = BH1750()
-# for i in range (1, 20):
-#     obj.print_result()
-#     time.sleep(1)
