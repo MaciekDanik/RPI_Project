@@ -1,16 +1,6 @@
-import RPi.GPIO as GPIO
-from time import sleep
+from datetime import datetime
 
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
+now = datetime.now().hour
 
-GPIO.setup(23, GPIO.OUT)
-GPIO.setup(21, GPIO.OUT)
-GPIO.setup(20, GPIO.OUT)
-GPIO.setup(16, GPIO.OUT)
-
-GPIO.output(21, 1)
-sleep(10)
-GPIO.output(21, 0)
-
-GPIO.cleanup()
+if now < 22:
+    print()
