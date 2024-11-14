@@ -6,6 +6,8 @@ from time import sleep
 from mfrc522 import SimpleMFRC522
 from BH1750_light_sensor import BH1750
 from datetime import datetime
+import paho.mqtt.client as mqtt
+from User import User
 
 GPIO.setwarnings(False) 
 GPIO.setmode(GPIO.BCM)
@@ -15,23 +17,23 @@ GPIO.setup(PWM_PIN, GPIO.OUT) #PWM for fan
 pwm = GPIO.PWM(PWM_PIN, 50)
 
 
+
 """RFID variable"""
 rfid_text_global = ""
+
+"""User"""
+USER_1 = User("USER_1", 370, 550, 65, 25, 5, 23)
+USER_2 = User("USER_2", 400, 550, 55, 19, 6, 1)
+ACTIVE_USER = User("USER_0")
 
 """variables needed for dht11 sensor"""
 DHT_PIN = board.D12
 DHT11 = adafruit_dht.DHT11(DHT_PIN)
-ALARM_HUM = 65
-BASE_TEMP = 19
 
 """variables needed for light intesity measures"""
 light_sensor = BH1750()
-LOWER_MARGIN = 350
-UPPER_MARGIN = 500
 
 """Variable that stores the time at which the blinds will close"""
-BLIND_CLOSE_TIME = 0
-BLIND_OPEN_TIME = 23 #<-for tests should be 7
 BLINDS_STATE = 0 # 0- OPEN    1-CLOSED
 
 """
@@ -68,10 +70,11 @@ def rfid_thread():
     """
     RFID_module = SimpleMFRC522()
     global rfid_text_global
-    global BASE_TEMP, ALARM_HUM, LOWER_MARGIN, UPPER_MARGIN, BLIND_CLOSE_TIME, BLIND_OPEN_TIME
 
+    global ACTIVE_USER, USER_1, USER_2
+    
     while True:
-        id_rfid, text_rfid = RFID_module.read()
+        _, text_rfid = RFID_module.read()
         buzz(1)
         sleep(0.5)
 
@@ -81,20 +84,13 @@ def rfid_thread():
 
         print("Text read: {}".format(text_rfid))
 
-        if text_rfid == "USER1":
-            BASE_TEMP = 22
-            ALARM_HUM = 65
-            LOWER_MARGIN = 350
-            UPPER_MARGIN = 500
-            BLIND_CLOSE_TIME = 22
-            BLIND_OPEN_TIME = 7
-        elif text_rfid == "USER2":
-            BASE_TEMP = 19
-            ALARM_HUM = 55
-            LOWER_MARGIN = 400
-            UPPER_MARGIN = 550
-            BLIND_CLOSE_TIME = 23
-            BLIND_OPEN_TIME = 6
+        #zrobic klasę user i subscriber mqtt odbiera dane, i 
+        #podmienia je w globalnej zmiennej. Do tego publisher mqtt
+        #wysyła dane jako pakiet. osobny wątek odbiera i podmienia dane w globalnym user
+        if text_rfid == "USER_1":
+            ACTIVE_USER = USER_1
+        elif text_rfid == "USER_2":
+            ACTIVE_USER = USER_2
         elif text_rfid == "END":
             rfid_text_global = text_rfid
 
@@ -117,7 +113,6 @@ def fan_control(state, dc):
     state = 0 -> fan OFF
     dc - duty cycle -> fan speed
     """
-    # global pwm
     global FAN_STATE
 
     if state == 1 and FAN_STATE == 0:
@@ -187,10 +182,11 @@ def blinds_control(state):
 def light_intensity():
     intensity = int(light_sensor.read_light())
 
-    if (intensity >= 0 and intensity <= LOWER_MARGIN):
+    if (intensity >= 0 and intensity <= ACTIVE_USER.LOWER_MARGIN):
         GPIO.output(21, 1)
         GPIO.output(16, 1)
-    elif (intensity > LOWER_MARGIN and intensity <= UPPER_MARGIN):
+    elif (intensity > ACTIVE_USER.LOWER_MARGIN and
+           intensity <= ACTIVE_USER.UPPER_MARGIN):
         GPIO.output(21, 1)
         GPIO.output(16, 0)
     else:
@@ -220,8 +216,8 @@ def temperature_humidity_control():
             #     fan_control(0)
             #     print("Fan turned off.")
             
-            if temperature >= BASE_TEMP + 1:
-                t_diff = temperature - BASE_TEMP
+            if temperature >= ACTIVE_USER.BASE_TEMP + 1:
+                t_diff = temperature - ACTIVE_USER.BASE_TEMP
                 dc = min(BASIC_FAN_SPEED + t_diff * 5, 100)
 
                 print("t_diff: {}\tdc: {}".format(t_diff, dc))
@@ -237,9 +233,11 @@ def chek_blinds_time():
     now = datetime.now().hour
     
 
-    if now ==  BLIND_CLOSE_TIME and BLINDS_STATE == 0:
+    if (now == ACTIVE_USER.BLIND_CLOSE_TIME and
+            ACTIVE_USER.BLINDS_STATE == 0):
         blinds_control(1) #close blinds
-    elif now == BLIND_OPEN_TIME and BLINDS_STATE == 1:
+    elif (now == ACTIVE_USER.BLIND_OPEN_TIME and
+            ACTIVE_USER.BLINDS_STATE == 1):
         blinds_control(0) #open blinds
 
 if __name__ == "__main__":
@@ -264,6 +262,7 @@ if __name__ == "__main__":
 
             # blinds_control(1) # for test purposes
             
+            #częstość pomiaru temperatury? też jako zmienna USER.coś
             if counter %10 == 0:
                 temperature_humidity_control()
 
@@ -274,6 +273,11 @@ if __name__ == "__main__":
     finally:
         for pin in PIN_TABLE:
             GPIO.output(pin, 0)
+        for _ in range(3):
+            buzz(1)
+            sleep(0.2)
+            buzz(0)
+            sleep(0.2)
 
         GPIO.cleanup()
 
