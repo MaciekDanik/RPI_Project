@@ -94,6 +94,27 @@ def rfid_thread():
         elif text_rfid == "END":
             rfid_text_global = text_rfid
 
+def mqtt_subscriber():
+    broker_addres = "192.168.0.69"
+    broker_port = 1883
+    topic = "user/preferences"
+
+    def on_message(client, userdata, message):
+        payload = message.payload.decode("utf-8")
+        preferences = map(str, payload.split(","))
+
+        for x in preferences:
+            print(x)
+        #to trzeba zmienić na ładunek z usera
+
+    client = mqtt.Client()
+    client.on_message = on_message
+    client.connect(broker_addres, broker_port)
+    client.subscribe(topic)
+
+    client.loop_forever()
+
+
 def warning_LED(state):
     """
     This function will turn on or off the yellow LED depending on the 
