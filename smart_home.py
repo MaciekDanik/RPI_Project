@@ -23,7 +23,7 @@ rfid_text_global = ""
 
 """User"""
 USER_1 = User("USER_1", 370, 550, 65, 25, 5, 23)
-USER_2 = User("USER_2", 400, 550, 55, 19, 6, 1)
+USER_2 = User("USER_2", 400, 550, 55, 19, 6, 18)
 ACTIVE_USER = User("USER_0")
 
 """variables needed for dht11 sensor"""
@@ -81,37 +81,64 @@ def rfid_thread():
         text_rfid = text_rfid.replace(" ","")
         buzz(0)
 
-
         print("Text read: {}".format(text_rfid))
 
         #zrobic klasę user i subscriber mqtt odbiera dane, i 
         #podmienia je w globalnej zmiennej. Do tego publisher mqtt
         #wysyła dane jako pakiet. osobny wątek odbiera i podmienia dane w globalnym user
+
+        print("Active user before: {}".format(ACTIVE_USER.user))
         if text_rfid == "USER_1":
             ACTIVE_USER = USER_1
         elif text_rfid == "USER_2":
             ACTIVE_USER = USER_2
         elif text_rfid == "END":
             rfid_text_global = text_rfid
+        print("Active user after: {}".format(ACTIVE_USER.user))
 
 def mqtt_subscriber():
+    global ACTIVE_USER, USER_1, USER_2
     broker_addres = "192.168.0.69"
     broker_port = 1883
     topic = "user/preferences"
 
     def on_message(client, userdata, message):
-        payload = message.payload.decode("utf-8")
-        preferences = map(str, payload.split(","))
+        global ACTIVE_USER, USER_1, USER_2
 
-        for x in preferences:
-            print(x)
-        #to trzeba zmienić na ładunek z usera
+        payload = message.payload.decode("utf-8")
+        # preferences = map(str, payload.split(","))
+        preferences = payload.split(",")
+        tmp_user = User("tmp")
+
+        for _ in range(2):
+            buzz(1)
+            sleep(0.2)
+            buzz(0)
+            sleep(0.2)
+
+        tmp_user.user = preferences[0]
+        tmp_user.LOWER_MARGIN = int(preferences[1])
+        tmp_user.UPPER_MARGIN = int(preferences[2])
+        tmp_user.BASE_TEMP = int(preferences[3])
+        tmp_user.BLIND_OPEN_TIME = int(preferences[4])
+        tmp_user.BLIND_CLOSE_TIME = int(preferences[5])
+        
+        if preferences[0] == "USER_1":
+            USER_1 = tmp_user
+            if ACTIVE_USER.user == "USER_1":
+                ACTIVE_USER = USER_1
+        elif preferences[0] == "USER_2":
+            USER_2 = tmp_user
+            if ACTIVE_USER.user == "USER_2":
+                ACTIVE_USER = USER_2
+
 
     client = mqtt.Client()
     client.on_message = on_message
     client.connect(broker_addres, broker_port)
     client.subscribe(topic)
 
+    print("Topic subscribed: {}".format(topic))
     client.loop_forever()
 
 
@@ -222,7 +249,7 @@ def temperature_humidity_control():
     try:
         temperature = DHT11.temperature
         humidity = DHT11.humidity
-        print("Temperature: {}\tHumidity: {}".format(temperature, humidity))
+        print("\nTemperature: {}\tHumidity: {}".format(temperature, humidity))
 
         if humidity is not None and temperature is not None:
             warning_LED(1)
@@ -241,7 +268,7 @@ def temperature_humidity_control():
                 t_diff = temperature - ACTIVE_USER.BASE_TEMP
                 dc = min(BASIC_FAN_SPEED + t_diff * 5, 100)
 
-                print("t_diff: {}\tdc: {}".format(t_diff, dc))
+                print("t_diff: {}\tdc: {}\n".format(t_diff, dc))
 
                 fan_control(1, dc)
             else:
@@ -253,23 +280,23 @@ def temperature_humidity_control():
 def chek_blinds_time():
     now = datetime.now().hour
     
-
     if (now == ACTIVE_USER.BLIND_CLOSE_TIME and
-            ACTIVE_USER.BLINDS_STATE == 0):
+            BLINDS_STATE == 0):
         blinds_control(1) #close blinds
     elif (now == ACTIVE_USER.BLIND_OPEN_TIME and
-            ACTIVE_USER.BLINDS_STATE == 1):
+            BLINDS_STATE == 1):
         blinds_control(0) #open blinds
 
 if __name__ == "__main__":
     gpio_setup()
-    print("Setup - complete!")
+    print("Setup - complete!\n")
 
     RFID_thread = threading.Thread(target=rfid_thread, daemon=True)
-    RFID_thread.start()
-    print("RFID thread started")
+    MQTT_thread = threading.Thread(target=mqtt_subscriber, daemon=True)
 
-    # pwm = GPIO.PWM(PWM_PIN, 50)
+    RFID_thread.start()
+    MQTT_thread.start()
+    print("RFID thread and MQTT thread started.\n")
 
     counter = 0
 
