@@ -1,13 +1,13 @@
-import threading
-import RPi.GPIO as GPIO
-import adafruit_dht
-import board
-from time import sleep
-from mfrc522 import SimpleMFRC522
-from BH1750_light_sensor import BH1750
-from datetime import datetime
-import paho.mqtt.client as mqtt
-from User import User
+import threading #for multithreading
+import RPi.GPIO as GPIO #for easy GPIO manipulation
+import adafruit_dht #for DHT11 sensor
+import board #needed for above library
+from time import sleep #to stop the program
+from mfrc522 import SimpleMFRC522 #for easy use of the mfrc522 module
+from BH1750_light_sensor import BH1750 #needed to use the BH1750 sensor
+from datetime import datetime #for current hour reading
+import paho.mqtt.client as mqtt #for mqtt comunication
+from User import User #User class
 
 GPIO.setwarnings(False) 
 GPIO.setmode(GPIO.BCM)
@@ -24,7 +24,7 @@ rfid_text_global = ""
 """User"""
 USER_1 = User("USER_1", 370, 550, 65, 25, 5, 23)
 USER_2 = User("USER_2", 400, 550, 55, 19, 6, 18)
-ACTIVE_USER = User("USER_0")
+ACTIVE_USER = USER_1
 
 """variables needed for dht11 sensor"""
 DHT_PIN = board.D12
@@ -32,6 +32,7 @@ DHT11 = adafruit_dht.DHT11(DHT_PIN)
 
 """variables needed for light intesity measures"""
 light_sensor = BH1750()
+LIGHTS_OFF = False
 
 """Variable that stores the time at which the blinds will close"""
 BLINDS_STATE = 0 # 0- OPEN    1-CLOSED
@@ -41,9 +42,9 @@ Variables that hold the pin number for both dc motors and pwm pin
 """
 IN1, IN2, IN3, IN4 = 5, 6, 19, 26
 FAN_STATE = 0  #0-OFF   1-ON
-BASIC_FAN_SPEED = 60
+BASIC_FAN_SPEED = 60 #lower than that will not spin the fan
 
-PIN_TABLE = [16, 20, 21, IN1, IN2, IN3, IN4, PWM_PIN, 23]
+PIN_TABLE = [16, 20, 21, IN1, IN2, IN3, IN4, PWM_PIN, 23] #Used when ending the system work, for gpio-cleanup
 
 def gpio_setup():
     """
@@ -54,10 +55,10 @@ def gpio_setup():
     GPIO.setup(16, GPIO.OUT) #red LED
 
     #window blinds dc motor and cooling fan
-    GPIO.setup(IN1, GPIO.OUT)
-    GPIO.setup(IN2, GPIO.OUT)
-    GPIO.setup(IN3, GPIO.OUT)
-    GPIO.setup(IN4, GPIO.OUT)
+    GPIO.setup(IN1, GPIO.OUT) #fan
+    GPIO.setup(IN2, GPIO.OUT) #fan
+    GPIO.setup(IN3, GPIO.OUT) #DC
+    GPIO.setup(IN4, GPIO.OUT) #DC
     GPIO.setup(PWM_PIN, GPIO.OUT) #PWM for fan
     #Buzzer
     GPIO.setup(23, GPIO.OUT)
@@ -65,8 +66,8 @@ def gpio_setup():
 def rfid_thread():
     """
     This function will handle the RFID comunication between the main thread 
-    and the RFID thread. It will alter the RFID_TEXT variable after it 
-    reads a tag.
+    and the RFID thread. It will alter the ACTIVE_USER based on the RFID tag read by the MFRC522 module.If the text read is END,
+    then rfid_text_global variable will be altered.
     """
     RFID_module = SimpleMFRC522()
     global rfid_text_global
@@ -75,28 +76,27 @@ def rfid_thread():
     
     while True:
         _, text_rfid = RFID_module.read()
+
         buzz(1)
         sleep(0.5)
-
         text_rfid = text_rfid.replace(" ","")
         buzz(0)
 
-        print("Text read: {}".format(text_rfid))
+        print(f"Text read: {text_rfid}")
 
-        #zrobic klasę user i subscriber mqtt odbiera dane, i 
-        #podmienia je w globalnej zmiennej. Do tego publisher mqtt
-        #wysyła dane jako pakiet. osobny wątek odbiera i podmienia dane w globalnym user
-
-        print("Active user before: {}".format(ACTIVE_USER.user))
+        before_user = ACTIVE_USER.user
         if text_rfid == "USER_1":
             ACTIVE_USER = USER_1
         elif text_rfid == "USER_2":
             ACTIVE_USER = USER_2
         elif text_rfid == "END":
             rfid_text_global = text_rfid
-        print("Active user after: {}".format(ACTIVE_USER.user))
+        print(f"Active_USER changed from {before_user} to {ACTIVE_USER.user}")
 
 def mqtt_subscriber():
+    """
+    This function will hande the user request to change user profiles.
+    """
     global ACTIVE_USER, USER_1, USER_2
     broker_addres = "192.168.0.69"
     broker_port = 1883
@@ -106,7 +106,6 @@ def mqtt_subscriber():
         global ACTIVE_USER, USER_1, USER_2
 
         payload = message.payload.decode("utf-8")
-        # preferences = map(str, payload.split(","))
         preferences = payload.split(",")
         tmp_user = User("tmp")
 
@@ -119,9 +118,12 @@ def mqtt_subscriber():
         tmp_user.user = preferences[0]
         tmp_user.LOWER_MARGIN = int(preferences[1])
         tmp_user.UPPER_MARGIN = int(preferences[2])
-        tmp_user.BASE_TEMP = int(preferences[3])
-        tmp_user.BLIND_OPEN_TIME = int(preferences[4])
-        tmp_user.BLIND_CLOSE_TIME = int(preferences[5])
+        tmp_user.ALARM_HUM = int(preferences[3])
+        tmp_user.BASE_TEMP = int(preferences[4])
+        tmp_user.BLIND_OPEN_TIME = int(preferences[5])
+        tmp_user.BLIND_CLOSE_TIME = int(preferences[6])
+        tmp_user.NIGHT_TIME_START = int(preferences[7])
+        tmp_user.NIGHT_TIME_STOP = int(preferences[8])
         
         if preferences[0] == "USER_1":
             USER_1 = tmp_user
@@ -138,7 +140,7 @@ def mqtt_subscriber():
     client.connect(broker_addres, broker_port)
     client.subscribe(topic)
 
-    print("Topic subscribed: {}".format(topic))
+    print(f"Topic subscribed: {topic}")
     client.loop_forever()
 
 
@@ -150,6 +152,9 @@ def warning_LED(state):
     GPIO.output(20,state)
 
 def buzz(state):
+    """
+    This function will make the buzzer buzz if passed state is 1 and stop buzzing if state is 0.
+    """
     GPIO.output(23, state)
 
 def fan_control(state, dc):
@@ -174,16 +179,10 @@ def fan_control(state, dc):
         pwm.stop()
         FAN_STATE = 0
         print("Fan turned OFF.")
-    
-    # if state == 1:
-    #     GPIO.output(IN3, 1)
-    #     GPIO.output(IN4, 0)
-    # elif state == 0:
-    #     GPIO.output(IN3, 0)
-    #     GPIO.output(IN4, 1)
 
 def spin_motor(direction):
     """
+    This function will make the DC motor turn according to the direction passed.
     direction = 1 -> turn right
     direction = -1 -> turn left
     direction = 0 -> stop turning
@@ -228,18 +227,30 @@ def blinds_control(state):
     
 
 def light_intensity():
-    intensity = int(light_sensor.read_light())
-
-    if (intensity >= 0 and intensity <= ACTIVE_USER.LOWER_MARGIN):
-        GPIO.output(21, 1)
-        GPIO.output(16, 1)
-    elif (intensity > ACTIVE_USER.LOWER_MARGIN and
-           intensity <= ACTIVE_USER.UPPER_MARGIN):
-        GPIO.output(21, 1)
-        GPIO.output(16, 0)
+    """
+    This function will measure light intesity and control the ligting according to user preferences set.
+    """
+    global LIGHTS_OFF
+    now = datetime.now().hour
+    print(f"Now: {now}")
+    if (LIGHTS_OFF == False):
+        intensity = int(light_sensor.read_light())
+        print("Went into IF")
+        if (intensity >= 0 and intensity <= ACTIVE_USER.LOWER_MARGIN):
+            GPIO.output(21, 1)
+            GPIO.output(16, 1)
+        elif (intensity > ACTIVE_USER.LOWER_MARGIN and
+            intensity <= ACTIVE_USER.UPPER_MARGIN):
+            GPIO.output(21, 1)
+            GPIO.output(16, 0)
+        else:
+            GPIO.output(21, 0)
+            GPIO.output(16, 0)
     else:
+        print("Went to ELSE")
         GPIO.output(21, 0)
         GPIO.output(16, 0)
+
 
 def temperature_humidity_control():
     """
@@ -249,26 +260,21 @@ def temperature_humidity_control():
     try:
         temperature = DHT11.temperature
         humidity = DHT11.humidity
-        print("\nTemperature: {}\tHumidity: {}".format(temperature, humidity))
+        print(f"\nTemperature: {temperature}*C\tHumidity: {humidity}%")
 
         if humidity is not None and temperature is not None:
             warning_LED(1)
             sleep(0.5)
             warning_LED(0)
 
-            # if humidity >= ALARM_HUM:
-            #     fan_control(1)
-            #     print("Humidity too high!")
-            #     print("Fan turned on.")
-            # else:
-            #     fan_control(0)
-            #     print("Fan turned off.")
+            if humidity >= ACTIVE_USER.ALARM_HUM:
+                print(f"Humidity too high: {humidity}%\tTake action!")    
             
             if temperature >= ACTIVE_USER.BASE_TEMP + 1:
                 t_diff = temperature - ACTIVE_USER.BASE_TEMP
                 dc = min(BASIC_FAN_SPEED + t_diff * 5, 100)
 
-                print("t_diff: {}\tdc: {}\n".format(t_diff, dc))
+                print(f"t_diff: {t_diff}\tdc: {dc}\n")
 
                 fan_control(1, dc)
             else:
@@ -277,15 +283,25 @@ def temperature_humidity_control():
         None
 
 
-def chek_blinds_time():
+def chek_time():
+    """
+    This fuction will check:
+    *if it is time to close window blinds and act accordingly
+    *if it is time to turn lights on or off
+    """
+    global LIGHTS_OFF
     now = datetime.now().hour
     
-    if (now == ACTIVE_USER.BLIND_CLOSE_TIME and
-            BLINDS_STATE == 0):
+    if (now == ACTIVE_USER.BLIND_CLOSE_TIME and BLINDS_STATE == 0):
         blinds_control(1) #close blinds
-    elif (now == ACTIVE_USER.BLIND_OPEN_TIME and
-            BLINDS_STATE == 1):
+    elif (now == ACTIVE_USER.BLIND_OPEN_TIME and BLINDS_STATE == 1):
         blinds_control(0) #open blinds
+
+    if (now == ACTIVE_USER.NIGHT_TIME_START and LIGHTS_OFF == False):
+        LIGHTS_OFF = True
+    elif (now == ACTIVE_USER.NIGHT_TIME_STOP and LIGHTS_OFF == True):
+        LIGHTS_OFF = False
+
 
 if __name__ == "__main__":
     gpio_setup()
@@ -303,16 +319,15 @@ if __name__ == "__main__":
     try:
         while rfid_text_global != "END":
             light_intensity()
-            # print("Light measured")
-
-            chek_blinds_time()
-            # print("Blinds closing time chcecked")
-
-            # blinds_control(1) # for test purposes
             
-            #częstość pomiaru temperatury? też jako zmienna USER.coś
             if counter %10 == 0:
                 temperature_humidity_control()
+
+            if counter %60 == 0:
+                chek_time()
+
+            if counter == 3600:
+                counter = 0
 
             sleep(1)
             counter += 1
@@ -328,7 +343,3 @@ if __name__ == "__main__":
             sleep(0.2)
 
         GPIO.cleanup()
-
-
-
-    

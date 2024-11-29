@@ -6,7 +6,6 @@ BH1750_ADDR = 0x23 #sensor adress on the i2c bus
 CMD_READ = 0x11 #comand to read light sensitivity
 
 class BH1750(object):
-
    def __init__(self):
        # Rev 2 of Raspberry Pi and all newer use bus 1
        self.bus = smbus.SMBus(1)
