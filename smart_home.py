@@ -232,10 +232,9 @@ def light_intensity():
     """
     global LIGHTS_OFF
     now = datetime.now().hour
-    print(f"Now: {now}")
+
     if (LIGHTS_OFF == False):
         intensity = int(light_sensor.read_light())
-        print("Went into IF")
         if (intensity >= 0 and intensity <= ACTIVE_USER.LOWER_MARGIN):
             GPIO.output(21, 1)
             GPIO.output(16, 1)
@@ -246,8 +245,7 @@ def light_intensity():
         else:
             GPIO.output(21, 0)
             GPIO.output(16, 0)
-    else:
-        print("Went to ELSE")
+    elif LIGHTS_OFF == True:
         GPIO.output(21, 0)
         GPIO.output(16, 0)
 
