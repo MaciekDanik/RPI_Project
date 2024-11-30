@@ -22,7 +22,7 @@ pwm = GPIO.PWM(PWM_PIN, 50)
 rfid_text_global = ""
 
 """User"""
-USER_1 = User("USER_1", 370, 550, 65, 25, 5, 23)
+USER_1 = User("USER_1", 370, 550, 65, 25, 5, 23,10,11)
 USER_2 = User("USER_2", 400, 550, 55, 19, 6, 18)
 ACTIVE_USER = USER_1
 
@@ -261,12 +261,11 @@ def temperature_humidity_control():
         print(f"\nTemperature: {temperature}*C\tHumidity: {humidity}%")
 
         if humidity is not None and temperature is not None:
-            warning_LED(1)
-            sleep(0.5)
-            warning_LED(0)
-
             if humidity >= ACTIVE_USER.ALARM_HUM:
-                print(f"Humidity too high: {humidity}%\tTake action!")    
+                warning_LED(1)
+                print(f"Humidity too high: {humidity}%\tTake action!") 
+            else:
+                warning_LED(0)   
             
             if temperature >= ACTIVE_USER.BASE_TEMP + 1:
                 t_diff = temperature - ACTIVE_USER.BASE_TEMP
