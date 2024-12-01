@@ -60,8 +60,7 @@ def gpio_setup():
     GPIO.setup(IN3, GPIO.OUT) #DC
     GPIO.setup(IN4, GPIO.OUT) #DC
     GPIO.setup(PWM_PIN, GPIO.OUT) #PWM for fan
-    #Buzzer
-    GPIO.setup(23, GPIO.OUT)
+    GPIO.setup(23, GPIO.OUT) #Buzzer
 
 def rfid_thread():
     """
@@ -70,9 +69,7 @@ def rfid_thread():
     then rfid_text_global variable will be altered.
     """
     RFID_module = SimpleMFRC522()
-    global rfid_text_global
-
-    global ACTIVE_USER, USER_1, USER_2
+    global rfid_text_global, ACTIVE_USER, USER_1, USER_2
     
     while True:
         _, text_rfid = RFID_module.read()
@@ -105,34 +102,38 @@ def mqtt_subscriber():
     def on_message(client, userdata, message):
         global ACTIVE_USER, USER_1, USER_2
 
-        payload = message.payload.decode("utf-8")
-        preferences = payload.split(",")
-        tmp_user = User("tmp")
+        try:
+            payload = message.payload.decode("utf-8")
+            preferences = payload.split(",")
+            tmp_user = User("tmp")
 
-        for _ in range(2):
-            buzz(1)
-            sleep(0.2)
-            buzz(0)
-            sleep(0.2)
+            for _ in range(2):
+                buzz(1)
+                sleep(0.2)
+                buzz(0)
+                sleep(0.2)
 
-        tmp_user.user = preferences[0]
-        tmp_user.LOWER_MARGIN = int(preferences[1])
-        tmp_user.UPPER_MARGIN = int(preferences[2])
-        tmp_user.ALARM_HUM = int(preferences[3])
-        tmp_user.BASE_TEMP = int(preferences[4])
-        tmp_user.BLIND_OPEN_TIME = int(preferences[5])
-        tmp_user.BLIND_CLOSE_TIME = int(preferences[6])
-        tmp_user.NIGHT_TIME_START = int(preferences[7])
-        tmp_user.NIGHT_TIME_STOP = int(preferences[8])
-        
-        if preferences[0] == "USER_1":
-            USER_1 = tmp_user
-            if ACTIVE_USER.user == "USER_1":
-                ACTIVE_USER = USER_1
-        elif preferences[0] == "USER_2":
-            USER_2 = tmp_user
-            if ACTIVE_USER.user == "USER_2":
-                ACTIVE_USER = USER_2
+            tmp_user.user = preferences[0]
+            tmp_user.LOWER_MARGIN = int(preferences[1])
+            tmp_user.UPPER_MARGIN = int(preferences[2])
+            tmp_user.ALARM_HUM = int(preferences[3])
+            tmp_user.BASE_TEMP = int(preferences[4])
+            tmp_user.BLIND_OPEN_TIME = int(preferences[5])
+            tmp_user.BLIND_CLOSE_TIME = int(preferences[6])
+            tmp_user.NIGHT_TIME_START = int(preferences[7])
+            tmp_user.NIGHT_TIME_STOP = int(preferences[8])
+            
+            if preferences[0] == "USER_1":
+                USER_1 = tmp_user
+                if ACTIVE_USER.user == "USER_1":
+                    ACTIVE_USER = USER_1
+            elif preferences[0] == "USER_2":
+                USER_2 = tmp_user
+                if ACTIVE_USER.user == "USER_2":
+                    ACTIVE_USER = USER_2
+        except Exception as e:
+            print(f"An error has occured while decoding the message: {e}")
+
 
 
     client = mqtt.Client()
@@ -197,10 +198,6 @@ def spin_motor(direction):
     elif direction == 0:
         GPIO.output(IN3, 0)
         GPIO.output(IN4, 0)
-    else:
-        for i in range (2):
-            GPIO.output(20, not GPIO.input(20))
-            sleep(0.25)
 
 def blinds_control(state):
     """
@@ -231,7 +228,6 @@ def light_intensity():
     This function will measure light intesity and control the ligting according to user preferences set.
     """
     global LIGHTS_OFF
-    now = datetime.now().hour
 
     if (LIGHTS_OFF == False):
         intensity = int(light_sensor.read_light())
@@ -276,8 +272,8 @@ def temperature_humidity_control():
                 fan_control(1, dc)
             else:
                 fan_control(0, BASIC_FAN_SPEED)
-    except:
-        None
+    except Exception as e:
+        print(f"Something went wrong: {e}")
 
 
 def chek_time():
@@ -295,9 +291,9 @@ def chek_time():
         blinds_control(0) #open blinds
 
     if (now == ACTIVE_USER.NIGHT_TIME_START and LIGHTS_OFF == False):
-        LIGHTS_OFF = True
+        LIGHTS_OFF = True #Night mode ON
     elif (now == ACTIVE_USER.NIGHT_TIME_STOP and LIGHTS_OFF == True):
-        LIGHTS_OFF = False
+        LIGHTS_OFF = False #Night mode OFF
 
 
 if __name__ == "__main__":
